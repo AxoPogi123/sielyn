@@ -13,8 +13,6 @@
       overflow: hidden;
     }
 
-    a { color: #ffffff; }
-
     #menu {
       position: absolute;
       bottom: 20px;
@@ -38,29 +36,33 @@
     button:hover { background-color: rgba(0, 255, 255, 0.4); }
     button:active { color: #000000; background-color: rgba(0, 255, 255, 0.8); }
 
-    /* CSS3D tiles */
     .element {
       width: 100px;
       height: 100px;
       box-shadow: 0 0 12px rgba(0, 255, 255, 0.5);
       border: 1px solid rgba(127, 255, 255, 0.25);
-      text-align: center;
       cursor: default;
       overflow: hidden;
       background: rgba(0,127,127,0.35);
       border-radius: 6px;
     }
     .element:hover { box-shadow: 0 0 12px rgba(0, 255, 255, 0.75); border: 1px solid rgba(127, 255, 255, 0.75); }
-    .element img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .element img { 
+      width: 100%;
+      height: 100%;
+      object-fit: cover;   /* fill box */
+      object-position: center; /* keep face centered */
+      display: block;
+    }
 
-    /* Heart button as outlined text */
     .heart-button {
       background: transparent;
       border: none;
       outline: 1px solid rgba(127, 255, 255, 0.75);
-      color: transparent;             /* fill transparent */
-      -webkit-text-stroke: 1px rgba(255, 80, 120, 0.95); /* outlined text */
+      color: transparent;
+      -webkit-text-stroke: 1px rgba(255, 80, 120, 0.95);
       text-stroke: 1px rgba(255, 80, 120, 0.95);
+      font-weight: bold;
     }
     .heart-button:hover { background: rgba(255, 80, 120, 0.2); }
 
@@ -76,11 +78,6 @@
       z-index: 9;
       user-select: none;
     }
-
-    /* Layer the two renderers on top of each other */
-    #container { position: absolute; inset: 0; }
-    canvas.webgl { position: absolute; inset: 0; z-index: 0; }
-    div.css3d { position: absolute; inset: 0; z-index: 1; }
   </style>
   <link rel="stylesheet" href="css/animate.min.css" />
 </head>
@@ -106,26 +103,19 @@
   <div id="love-text">I love you Jess</div>
 
   <script>
-    // --- Data --------------------------------------------------------------
     var personArray = [];
     for (var i = 0; i < 199; i++) { personArray.push({ image: "img/a.png" }); }
 
     var table = [];
     for (var i = 0; i < personArray.length; i++) {
       table[i] = Object.assign({}, personArray[i]);
-      table[i].p_x = (i % 20) + 1;                // column
-      table[i].p_y = Math.floor(i / 20) + 1;      // row
+      table[i].p_x = (i % 20) + 1;
+      table[i].p_y = Math.floor(i / 20) + 1;
     }
 
-    // --- Three.js: dual scenes (WebGL for 3D heart, CSS3D for tiles) -----
-    var camera, controls;
-    var webglRenderer, cssRenderer;
-    var webglScene, cssScene;
-
+    var camera, controls, renderer, scene;
     var objects = [];
     var targets = { table: [], sphere: [], helix: [], grid: [], heart: [] };
-
-    var heartMesh; // 3D heart model
 
     init();
     animate();
@@ -134,18 +124,9 @@
       camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 1, 10000);
       camera.position.z = 3000;
 
-      // Scenes
-      webglScene = new THREE.Scene();
-      cssScene = new THREE.Scene();
+      scene = new THREE.Scene();
 
-      // Lights for WebGL
-      var ambient = new THREE.AmbientLight(0xffffff, 0.6);
-      webglScene.add(ambient);
-      var dir = new THREE.DirectionalLight(0xffffff, 0.8);
-      dir.position.set(1, 1, 1);
-      webglScene.add(dir);
-
-      // Build CSS3D tiles
+      // Create elements
       for (var i = 0; i < table.length; i++) {
         var el = document.createElement('div');
         el.className = 'element';
@@ -155,14 +136,14 @@
         img.onerror = function(){ this.style.display = 'none'; };
         el.appendChild(img);
 
-        var cssObj = new THREE.CSS3DObject(el);
-        cssObj.position.x = Math.random() * 4000 - 2000;
-        cssObj.position.y = Math.random() * 4000 - 2000;
-        cssObj.position.z = Math.random() * 4000 - 2000;
-        cssScene.add(cssObj);
-        objects.push(cssObj);
+        var obj = new THREE.CSS3DObject(el);
+        obj.position.x = Math.random() * 4000 - 2000;
+        obj.position.y = Math.random() * 4000 - 2000;
+        obj.position.z = Math.random() * 4000 - 2000;
+        scene.add(obj);
+        objects.push(obj);
 
-        // Table target (grid-like lattice)
+        // Table target
         var t = new THREE.Object3D();
         t.position.x = (table[i].p_x * 140) - 1330;
         t.position.y = - (table[i].p_y * 180) + 990;
@@ -204,103 +185,50 @@
         targets.grid.push(o);
       }
 
-      // Heart layout targets (2D heart curve, spread across all tiles)
+      // Heart layout targets (2D heart curve)
       for (var i = 0, l = objects.length; i < l; i++) {
-        var t = i / l * Math.PI * 2; // 0..2π
+        var t = i / l * Math.PI * 2;
         var x = 16 * Math.pow(Math.sin(t), 3);
         var y = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
         var o = new THREE.Object3D();
         o.position.set(x * 50, y * 50, 0);
+        o.lookAt(camera.position); // face camera
         targets.heart.push(o);
       }
 
-      // --- WebGL: 3D Heart mesh -----------------------------------------
-      heartMesh = buildHeartMesh();
-      heartMesh.position.set(0, 0, 0);
-      heartMesh.scale.set(30, 30, 30);
-      heartMesh.visible = false; // only show in HEART mode
-      webglScene.add(heartMesh);
+      renderer = new THREE.CSS3DRenderer();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      document.getElementById('container').appendChild(renderer.domElement);
 
-      // Renderers
-      webglRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-      webglRenderer.setSize(window.innerWidth, window.innerHeight);
-      webglRenderer.domElement.className = 'webgl';
-      document.getElementById('container').appendChild(webglRenderer.domElement);
-
-      cssRenderer = new THREE.CSS3DRenderer();
-      cssRenderer.setSize(window.innerWidth, window.innerHeight);
-      cssRenderer.domElement.className = 'css3d';
-      document.getElementById('container').appendChild(cssRenderer.domElement);
-
-      // Controls (attach to top layer for pointer events)
-      controls = new THREE.TrackballControls(camera, cssRenderer.domElement);
+      controls = new THREE.TrackballControls(camera, renderer.domElement);
       controls.rotateSpeed = 0.6;
       controls.minDistance = 500;
       controls.maxDistance = 6000;
       controls.addEventListener('change', render);
 
       // Buttons
-      document.getElementById('table').addEventListener('click', function(){
-        heartMesh.visible = false; hideLoveText();
-        transform(targets.table, 1200);
-      });
-      document.getElementById('sphere').addEventListener('click', function(){
-        heartMesh.visible = false; hideLoveText();
-        transform(targets.sphere, 1600);
-      });
-      document.getElementById('helix').addEventListener('click', function(){
-        heartMesh.visible = false; hideLoveText();
-        transform(targets.helix, 1600);
-      });
-      document.getElementById('grid').addEventListener('click', function(){
-        heartMesh.visible = false; hideLoveText();
-        transform(targets.grid, 1600);
-      });
-      document.getElementById('heart').addEventListener('click', function(){
-        transform(targets.heart, 1600);
-        heartMesh.visible = true;                      // show 3D heart
-        document.getElementById('love-text').style.display = 'block';
-      });
+      document.getElementById('table').addEventListener('click', function(){ hideLoveText(); transform(targets.table, 1200); });
+      document.getElementById('sphere').addEventListener('click', function(){ hideLoveText(); transform(targets.sphere, 1600); });
+      document.getElementById('helix').addEventListener('click', function(){ hideLoveText(); transform(targets.helix, 1600); });
+      document.getElementById('grid').addEventListener('click', function(){ hideLoveText(); transform(targets.grid, 1600); });
+      document.getElementById('heart').addEventListener('click', function(){ transform(targets.heart, 1600); document.getElementById('love-text').style.display = 'block'; });
 
-      // Initial arrangement
+      // Initial
       transform(targets.table, 1800);
       window.addEventListener('resize', onWindowResize, false);
-    }
-
-    function buildHeartMesh(){
-      // Create a 2D heart Shape using bezier curves and extrude it into 3D
-      var x = 0, y = 0;
-      var heartShape = new THREE.Shape();
-      heartShape.moveTo( x + 0, y + 0 );
-      heartShape.bezierCurveTo( x + 0, y + 0, x - 6, y - 6, x - 6, y - 12 );
-      heartShape.bezierCurveTo( x - 6, y - 20, x + 2, y - 24, x + 0, y - 30 );
-      heartShape.bezierCurveTo( x - 2, y - 36, x - 12, y - 38, x - 18, y - 30 );
-      heartShape.bezierCurveTo( x - 30, y - 14, x + 0, y + 6, x + 0, y + 6 );
-      heartShape.bezierCurveTo( x + 0, y + 6, x + 30, y - 14, x + 18, y - 30 );
-      heartShape.bezierCurveTo( x + 12, y - 38, x + 2, y - 36, x + 0, y - 30 );
-      heartShape.bezierCurveTo( x - 2, y - 24, x + 6, y - 20, x + 6, y - 12 );
-      heartShape.bezierCurveTo( x + 6, y - 6, x + 0, y + 0, x + 0, y + 0 );
-
-      var extrudeSettings = { depth: 2.8, bevelEnabled: true, bevelSegments: 3, steps: 32, bevelSize: 0.6, bevelThickness: 0.6 };
-      var geo = new THREE.ExtrudeGeometry(heartShape, extrudeSettings);
-      geo.center();
-
-      var mat = new THREE.MeshPhongMaterial({ color: 0xff3b7d, shininess: 120, specular: 0xffffff });
-      var mesh = new THREE.Mesh(geo, mat);
-      return mesh;
     }
 
     function transform(targetsArray, duration) {
       TWEEN.removeAll();
       for (var i = 0; i < objects.length; i++) {
         var obj = objects[i];
-        var target = targetsArray[i];
+        var target = targetsArray[i % targetsArray.length];
         new TWEEN.Tween(obj.position)
           .to({ x: target.position.x, y: target.position.y, z: target.position.z }, Math.random() * duration + duration)
           .easing(TWEEN.Easing.Exponential.InOut)
           .start();
         new TWEEN.Tween(obj.rotation)
-          .to({ x: target.rotation.x || 0, y: target.rotation.y || 0, z: target.rotation.z || 0 }, Math.random() * duration + duration)
+          .to({ x: 0, y: 0, z: 0 }, Math.random() * duration + duration)
           .easing(TWEEN.Easing.Exponential.InOut)
           .start();
       }
@@ -312,23 +240,18 @@
     function onWindowResize() {
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
-      webglRenderer.setSize(window.innerWidth, window.innerHeight);
-      cssRenderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setSize(window.innerWidth, window.innerHeight);
       render();
     }
 
     function animate() {
       requestAnimationFrame(animate);
-      if (heartMesh && heartMesh.visible) { heartMesh.rotation.y += 0.01; }
       TWEEN.update();
       controls.update();
       render();
     }
 
-    function render() {
-      webglRenderer.render(webglScene, camera);
-      cssRenderer.render(cssScene, camera);
-    }
+    function render() { renderer.render(scene, camera); }
   </script>
 </body>
 </html>
