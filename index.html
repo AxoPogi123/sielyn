@@ -51,7 +51,7 @@
       width: 100%;
       height: 100%;
       object-fit: cover;
-      object-position: center top;
+      object-position: center top; /* focus higher (crop bottom to center face) */
       display: block;
     }
 
@@ -100,11 +100,11 @@
     <button class="heart-button" id="heart">HEART</button>
   </div>
 
-  <div id="love-text">I miss you Jess</div>
+  <div id="love-text">I love you Jess</div>
 
   <script>
     var personArray = [];
-    for (var i = 0; i < 600; i++) { personArray.push({ image: "img/a.png" }); }
+    for (var i = 0; i < 199; i++) { personArray.push({ image: "img/a.png" }); }
 
     var table = [];
     for (var i = 0; i < personArray.length; i++) {
@@ -117,8 +117,7 @@
     var objects = [];
     var targets = { table: [], sphere: [], helix: [], grid: [], heart: [] };
 
-    var floating = false;
-    var rotating = false;
+    var floating = false; // state for floating animation
 
     init();
     animate();
@@ -129,6 +128,7 @@
 
       scene = new THREE.Scene();
 
+      // Create elements
       for (var i = 0; i < table.length; i++) {
         var el = document.createElement('div');
         el.className = 'element';
@@ -186,22 +186,15 @@
         targets.grid.push(o);
       }
 
-      // Evenly spaced Solid Heart
-      var depth = 200;
-      var spacing = 0.15;
-      for (var i = 0; i < objects.length; i++) {
-        var u = Math.random() * Math.PI * 2;
-        var v = Math.random();
-        var x = 16 * Math.pow(Math.sin(u), 3);
-        var y = 13 * Math.cos(u) - 5 * Math.cos(2*u) - 2 * Math.cos(3*u) - Math.cos(4*u);
-        var z = (Math.random() - 0.5) * depth;
-
-        if (Math.random() > spacing) {
-          var o = new THREE.Object3D();
-          o.position.set(x * 50, y * 50, z);
-          o.lookAt(camera.position);
-          targets.heart.push(o);
-        }
+      // Heart
+      for (var i = 0, l = objects.length; i < l; i++) {
+        var t = i / l * Math.PI * 2;
+        var x = 16 * Math.pow(Math.sin(t), 3);
+        var y = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
+        var o = new THREE.Object3D();
+        o.position.set(x * 50, y * 50, 0);
+        o.lookAt(camera.position);
+        targets.heart.push(o);
       }
 
       renderer = new THREE.CSS3DRenderer();
@@ -215,11 +208,11 @@
       controls.addEventListener('change', render);
 
       // Buttons
-      document.getElementById('table').addEventListener('click', function(){ floating = false; rotating = false; hideLoveText(); transform(targets.table, 1200); });
-      document.getElementById('sphere').addEventListener('click', function(){ floating = false; rotating = false; hideLoveText(); transform(targets.sphere, 1600); });
-      document.getElementById('helix').addEventListener('click', function(){ floating = false; rotating = false; hideLoveText(); transform(targets.helix, 1600); });
-      document.getElementById('grid').addEventListener('click', function(){ floating = false; rotating = false; hideLoveText(); transform(targets.grid, 1600); });
-      document.getElementById('heart').addEventListener('click', function(){ transform(targets.heart, 1600); document.getElementById('love-text').style.display = 'block'; floating = true; rotating = true; });
+      document.getElementById('table').addEventListener('click', function(){ floating = false; hideLoveText(); transform(targets.table, 1200); });
+      document.getElementById('sphere').addEventListener('click', function(){ floating = false; hideLoveText(); transform(targets.sphere, 1600); });
+      document.getElementById('helix').addEventListener('click', function(){ floating = false; hideLoveText(); transform(targets.helix, 1600); });
+      document.getElementById('grid').addEventListener('click', function(){ floating = false; hideLoveText(); transform(targets.grid, 1600); });
+      document.getElementById('heart').addEventListener('click', function(){ transform(targets.heart, 1600); document.getElementById('love-text').style.display = 'block'; floating = true; });
 
       transform(targets.table, 1800);
       window.addEventListener('resize', onWindowResize, false);
@@ -256,17 +249,12 @@
       TWEEN.update();
       controls.update();
 
+      // Floating effect in HEART mode
       if (floating) {
         var time = Date.now() * 0.001;
-        for (var i = 0; i < targets.heart.length; i++) {
-          objects[i].position.y += Math.sin(time + i) * 0.3;
+        for (var i = 0; i < objects.length; i++) {
+          objects[i].position.y += Math.sin(time + i) * 0.3; // gentle float
         }
-      }
-
-      if (rotating) {
-        scene.rotation.y += 0.001; // slow continuous rotation
-      } else {
-        scene.rotation.y = 0; // reset rotation when not in heart mode
       }
 
       render();
